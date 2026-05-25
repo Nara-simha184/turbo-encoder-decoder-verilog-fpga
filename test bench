@@ -1,0 +1,42 @@
+module tb_turbo_encoder_decoder_seq;
+    reg clk, rst;
+    reg  [7:0] data_in;
+    wire [7:0] sys, p1, p2, decoded;
+
+    turbo_encoder_decoder_seq DUT (
+        .clk(clk),
+        .rst(rst),
+        .data_in(data_in),
+        .sys_out(sys),
+        .parity1_out(p1),
+        .parity2_out(p2),
+        .decoded_out(decoded)
+    );
+
+    // Clock generation
+    always #5 clk = ~clk;
+
+    initial begin
+        clk = 0;
+        rst = 1;
+        data_in = 8'b0;
+        #10;
+        rst = 0;
+        data_in = 8'b11010110;
+        #20;
+        $display("==============================================");
+        $display("     CLOCKED TURBO ENCODER + DECODER TEST");
+        $display("==============================================");
+        $display("Input Data      : %b", data_in);
+        $display("Systematic Out  : %b", sys);
+        $display("Parity1 Out     : %b", p1);
+        $display("Parity2 Out     : %b", p2);
+        $display("Decoded Output  : %b", decoded);
+        if (decoded == data_in)
+            $display("Decoding Successful! Data matched.");
+        else
+            $display("Decoding Failed! Data mismatch.");
+        $display("==============================================");
+        $finish;
+    end
+endmodule
