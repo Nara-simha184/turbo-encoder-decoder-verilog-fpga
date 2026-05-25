@@ -1,0 +1,157 @@
+module turbo_encoder_decoder_seq (
+    input        clk,
+    input        rst,
+    input  [7:0] data_in,
+    output reg [7:0] sys_out,
+    output reg [7:0] parity1_out,
+    output reg [7:0] parity2_out,
+    output reg [7:0] decoded_out
+);
+    // ------------------------------------------------
+    // Internal wires and registers
+    // ------------------------------------------------
+    wire [7:0] inter_data;
+    wire [7:0] sys1, parity1, sys2, parity2;
+    wire [7:0] dec1_out, dec2_out, deintl_out;
+
+    // ------------------------------------------------
+    // Encoder chain
+    // ------------------------------------------------
+    rsc_encoder ENC1 (.data_in(data_in), .sys_out(sys1), .parity_out(parity1));
+    pseudo_random_interleaver IL (.data_in(data_in), .data_out(inter_data));
+    rsc_encoder ENC2 (.data_in(inter_data), .sys_out(sys2), .parity_out(parity2));
+
+    // ------------------------------------------------
+    // Decoder chain
+    // ------------------------------------------------
+    rsc_decoder DEC1 (.parity_in(parity1), .data_out(dec1_out));
+    rsc_decoder DEC2 (.parity_in(parity2), .data_out(dec2_out));
+    pseudo_random_deinterleaver DIL (.data_in(dec2_out), .data_out(deintl_out));
+
+    // ------------------------------------------------
+    // Sequential output updates
+    // ------------------------------------------------
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            sys_out      <= 8'b0;
+            parity1_out  <= 8'b0;
+            parity2_out  <= 8'b0;
+            decoded_out  <= 8'b0;
+        end
+        else begin
+            sys_out      <= sys1;
+            parity1_out  <= parity1;
+            parity2_out  <= parity2;
+            decoded_out  <= dec1_out ^ deintl_out ^ sys1;
+        end
+    end
+
+endmodule
+
+
+// ======================================================
+// RSC Encoder
+// ======================================================
+module rsc_encoder (
+    input  [7:0] data_in,
+    output [7:0] sys_out,
+    output [7:0] parity_out
+);
+    reg [2:0] shift;
+    reg [7:0] sys;
+    reg [7:0] parity;
+    integer i;
+    reg in_bit, feedback;
+
+    always @(*) begin
+        shift = 3'b000;
+        for (i = 0; i < 8; i = i + 1) begin
+            in_bit = data_in[i];
+            feedback = in_bit ^ shift[2];
+            sys[i] = in_bit;
+            parity[i] = feedback ^ shift[1] ^ shift[0];
+            shift = {shift[1:0], feedback};
+        end
+    end
+
+    assign sys_out = sys;
+    assign parity_out = parity;
+endmodule
+
+
+// ======================================================
+// Interleaver
+// ======================================================
+module pseudo_random_interleaver (
+    input  [7:0] data_in,
+    output reg [7:0] data_out
+);
+    integer i;
+    reg [2:0] perm [0:7];
+    initial begin
+        perm[0] = 3'd5;
+        perm[1] = 3'd3;
+        perm[2] = 3'd7;
+        perm[3] = 3'd0;
+        perm[4] = 3'd6;
+        perm[5] = 3'd2;
+        perm[6] = 3'd4;
+        perm[7] = 3'd1;
+    end
+    always @(*) begin
+        for (i = 0; i < 8; i = i + 1)
+            data_out[i] = data_in[perm[i]];
+    end
+endmodule
+
+
+// ======================================================
+// Deinterleaver
+// ======================================================
+module pseudo_random_deinterleaver (
+    input  [7:0] data_in,
+    output reg [7:0] data_out
+);
+    integer i;
+    reg [2:0] inv_perm [0:7];
+    initial begin
+        inv_perm[0] = 3'd3;
+        inv_perm[1] = 3'd7;
+        inv_perm[2] = 3'd5;
+        inv_perm[3] = 3'd1;
+        inv_perm[4] = 3'd6;
+        inv_perm[5] = 3'd0;
+        inv_perm[6] = 3'd4;
+        inv_perm[7] = 3'd2;
+    end
+    always @(*) begin
+        for (i = 0; i < 8; i = i + 1)
+            data_out[i] = data_in[inv_perm[i]];
+    end
+endmodule
+
+
+// ======================================================
+// RSC Decoder
+// ======================================================
+module rsc_decoder (
+    input  [7:0] parity_in,
+    output [7:0] data_out
+);
+    reg [2:0] shift;
+    reg [7:0] decoded;
+    integer i;
+    reg feedback, in_bit;
+
+    always @(*) begin
+        shift = 3'b000;
+        for (i = 0; i < 8; i = i + 1) begin
+            feedback = parity_in[i] ^ shift[1] ^ shift[0];
+            in_bit = feedback ^ shift[2];
+            decoded[i] = in_bit;
+            shift = {shift[1:0], feedback};
+        end
+    end
+
+    assign data_out = decoded;
+endmodule
